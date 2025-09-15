@@ -13,8 +13,8 @@
 2) General 设置（与 `vercel.json` 一致）：
    - Root Directory: `.`
    - Install Command: `pnpm install --frozen-lockfile`
-   - Build Command: `pnpm --filter @md/web build`
-   - Output Directory: `apps/web/dist`
+   - Build Command: `pnpm --filter @md/web build && npx shx rm -rf dist && npx shx mkdir -p dist && npx shx cp -r apps/web/dist/* dist/`
+   - Output Directory: `dist`
    - Node.js Version: `20.x`
 3) 环境变量（可选）：若未修改 `vite.config.ts`，需设置 `SERVER_ENV=NETLIFY`；当前版本已自动识别 Vercel，可不再设置。
 4) 点击 Deploy，等待构建完成；访问预览/生产链接验证页面与静态资源加载正常。
@@ -40,12 +40,13 @@ pnpm web build   # 产物在 apps/web/dist
 npx vercel whoami --token <VERCEL_TOKEN>
 # 首次绑定项目（在仓库根目录）
 npx vercel link --confirm --cwd . --token <VERCEL_TOKEN>
-# 预览部署（让 Vercel 执行 vercel.json 中的构建：pnpm --filter @md/web build）
+# 预览部署（执行 vercel.json 构建：先构建 apps/web，再将产物同步到根 dist）
 npx vercel deploy --confirm --cwd . --token <VERCEL_TOKEN>
 # 生产部署	
 npx vercel deploy --prod --confirm --cwd . --token <VERCEL_TOKEN>
 # 可选：本地构建并上传
-pnpm --filter @md/web build
+# 本地验证 staging 到根 dist 行为
+pnpm --filter @md/web build && npx shx rm -rf dist && npx shx mkdir -p dist && npx shx cp -r apps/web/dist/* dist/
 npx vercel deploy --prebuilt --prod --confirm --cwd . --token <VERCEL_TOKEN>
 ```
 

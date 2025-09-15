@@ -1,7 +1,7 @@
 {
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @md/web build",
-  "outputDirectory": "apps/web/dist",
+  "buildCommand": "pnpm --filter @md/web build && npx shx rm -rf dist && npx shx mkdir -p dist && npx shx cp -r apps/web/dist/* dist/",
+  "outputDirectory": "dist",
   "env": {
     "SERVER_ENV": "NETLIFY"
   }
