@@ -1,0 +1,9 @@
+{
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm web build",
+  "outputDirectory": "apps/web/dist",
+  "env": {
+    "SERVER_ENV": "NETLIFY"
+  }
+}
+
