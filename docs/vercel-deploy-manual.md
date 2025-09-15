@@ -13,7 +13,7 @@
 2) General 设置（与 `vercel.json` 一致）：
    - Root Directory: `.`
    - Install Command: `pnpm install --frozen-lockfile`
-   - Build Command: `pnpm web build`
+   - Build Command: `pnpm --filter @md/web build`
    - Output Directory: `apps/web/dist`
    - Node.js Version: `20.x`
 3) 环境变量（可选）：若未修改 `vite.config.ts`，需设置 `SERVER_ENV=NETLIFY`；当前版本已自动识别 Vercel，可不再设置。
@@ -40,12 +40,12 @@ pnpm web build   # 产物在 apps/web/dist
 npx vercel whoami --token <VERCEL_TOKEN>
 # 首次绑定项目（在仓库根目录）
 npx vercel link --confirm --cwd . --token <VERCEL_TOKEN>
-# 预览部署
+# 预览部署（让 Vercel 执行 vercel.json 中的构建：pnpm --filter @md/web build）
 npx vercel deploy --confirm --cwd . --token <VERCEL_TOKEN>
 # 生产部署	
 npx vercel deploy --prod --confirm --cwd . --token <VERCEL_TOKEN>
-# 可选：使用本地已构建产物
-pnpm web build
+# 可选：本地构建并上传
+pnpm --filter @md/web build
 npx vercel deploy --prebuilt --prod --confirm --cwd . --token <VERCEL_TOKEN>
 ```
 
