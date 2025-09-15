@@ -10,13 +10,14 @@
 
 ## 部署环境配置（Dashboard）
 1) 导入项目：Vercel → Add New → Import Git Repository → 选择本仓库。
-2) General 设置（与 `vercel.json` 一致）：
-   - Root Directory: `.`
-   - Install Command: `pnpm install --frozen-lockfile`
-   - Build Command: `pnpm --filter @md/web run type-check && pnpm --filter @md/web run build:only`
-   - Output Directory: `apps/web/dist`
+2) 推荐：将 Root Directory 设为 `apps/web`（子包作为根部署）
+   - Root Directory: `apps/web`
+   - Install Command: `pnpm -w install --frozen-lockfile`
+   - Build Command: `pnpm run build`
+   - Output Directory: `dist`
    - Node.js Version: `20.x`
-3) 环境变量（可选）：若未修改 `vite.config.ts`，需设置 `SERVER_ENV=NETLIFY`；当前版本已自动识别 Vercel，可不再设置。
+   - 说明：`apps/web/vercel.json` 已提供相同配置；Dashboard 可保持默认使用该文件。
+3) 环境变量：当前 `vite.config.ts` 已在 Vercel 环境自动将 `base` 设为 `/`，无需额外变量。
 4) 点击 Deploy，等待构建完成；访问预览/生产链接验证页面与静态资源加载正常。
 
 示例截图（占位，放入 `docs/screenshots/` 后生效）：
@@ -40,13 +41,13 @@ pnpm web build   # 产物在 apps/web/dist
 npx vercel whoami --token <VERCEL_TOKEN>
 # 首次绑定项目（在仓库根目录）
 npx vercel link --confirm --cwd . --token <VERCEL_TOKEN>
-# 预览部署（执行 vercel.json 构建：apps/web 构建，产物在 apps/web/dist）
-npx vercel deploy --confirm --cwd . --token <VERCEL_TOKEN>
-# 生产部署	
-npx vercel deploy --prod --confirm --cwd . --token <VERCEL_TOKEN>
+# 预览部署（Root 指向 apps/web）
+npx vercel deploy --confirm --cwd apps/web --token <VERCEL_TOKEN>
+# 生产部署（Root 指向 apps/web）
+npx vercel deploy --prod --confirm --cwd apps/web --token <VERCEL_TOKEN>
 # 可选：本地构建并上传
 # 本地验证构建产物存在于 apps/web/dist
-pnpm --filter @md/web run type-check && pnpm --filter @md/web run build:only && ls apps/web/dist
+cd apps/web && pnpm install --offline || pnpm -w install --frozen-lockfile && pnpm run build && ls dist
 npx vercel deploy --prebuilt --prod --confirm --cwd . --token <VERCEL_TOKEN>
 ```
 
