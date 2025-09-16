@@ -14,10 +14,10 @@ function onUpdate(val: boolean) {
   }
 }
 
+const publicAccountQr = `https://pic.operonai.com/qrcode_for_gh_de14ae1b64e2_860.jpg`
+
 const links = [
-  { label: `GitHub 仓库`, url: `https://github.com/doocs/md` },
-  { label: `Gitee 仓库`, url: `https://gitee.com/doocs/md` },
-  { label: `GitCode 仓库`, url: `https://gitcode.com/doocs/md` },
+  { label: `GitHub 仓库`, url: `https://github.com/jason-create-cmd/md` },
 ]
 
 function onRedirect(url: string) {
@@ -33,11 +33,11 @@ function onRedirect(url: string) {
       </DialogHeader>
       <div class="text-center">
         <h3>一款高度简洁的微信 Markdown 编辑器</h3>
-        <p>扫码关注公众号 Doocs，原创技术内容第一时间推送！</p>
+        <p>扫码关注公众号，获取最新的部署实践与使用技巧。</p>
         <img
           class="mx-auto my-5"
-          src="https://cdn-doocs.oss-cn-shenzhen.aliyuncs.com/gh/doocs/md/images/1648303220922-7e14aefa-816e-44c1-8604-ade709ca1c69.png"
-          alt="Doocs Markdown 编辑器"
+          :src="publicAccountQr"
+          alt="公众号二维码"
           style="width: 40%"
         >
       </div>

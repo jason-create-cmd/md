@@ -8,16 +8,13 @@ const props = defineProps({
 
 const emit = defineEmits([`close`])
 
+const rewardLink = `https://pic.operonai.com/CleanShot%202025-06-23%20at%2021.12.57%402x.png`
 const contributors = [
   {
-    name: `yanglbme`,
-    imageUrl: `https://cdn-doocs.oss-cn-shenzhen.aliyuncs.com/gh/doocs/md/images/support1.jpg`,
-    altText: `赞赏二维码 1`,
-  },
-  {
-    name: `yangfong`,
-    imageUrl: `https://cdn-doocs.oss-cn-shenzhen.aliyuncs.com/gh/doocs/md/images/support2.jpg`,
-    altText: `赞赏二维码 2`,
+    name: `个人赞赏码`,
+    imageUrl: rewardLink,
+    altText: `个人赞赏二维码`,
+    link: rewardLink,
   },
 ]
 
@@ -35,15 +32,22 @@ function onUpdate(val: boolean) {
         <DialogTitle>赞赏</DialogTitle>
       </DialogHeader>
       <div class="text-center">
-        <p>若觉得项目不错，可以通过以下方式支持我们～</p>
-        <div class="grid grid-cols-2 my-5 gap-4">
+        <p>如果本项目对你有所帮助，可以通过个人收款码支持我，点击图片可在新窗口查看大图。</p>
+        <div class="grid grid-cols-1 my-5 gap-4">
           <div v-for="contributor in contributors" :key="contributor.name" class="text-center">
-            <img
-              :src="contributor.imageUrl"
-              :alt="contributor.altText"
-              class="mx-auto"
-              style="width: 90%; max-width: 200px;border-radius: 10%;"
+            <a
+              :href="contributor.link || contributor.imageUrl"
+              target="_blank"
+              rel="noopener noreferrer"
             >
+              <img
+                :src="contributor.imageUrl"
+                :alt="contributor.altText"
+                class="mx-auto"
+                style="width: 90%; max-width: 220px; border-radius: 10%;"
+              >
+            </a>
+            <p class="mt-2 text-sm text-muted-foreground">{{ contributor.name }}</p>
           </div>
         </div>
       </div>

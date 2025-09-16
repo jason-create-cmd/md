@@ -154,14 +154,6 @@ docker run -d -p 8080:80 doocs/md:latest
 4. 如需自定义运行时行为，可在 Vercel 中新增环境变量（例如 VITE_LAUNCH_EDITOR），保存后重新部署即可生效。
 5. 点击 Deploy 启动首次部署，后续每次推送到主分支或创建 PR，Vercel 都会自动生成预览环境，便于回滚和验收。
 
-## 谁在使用
-
-请查看 [USERS.md](USERS.md) 文件，了解使用本项目的公众号。
-
-## 贡献指南
-
-我们欢迎任何形式的贡献！请查看 [CONTRIBUTING.md](./CONTRIBUTING.md) 获取提交 PR、Issue 的流程与规范。
-
 ## 关于
 
 本项目由 [jason-create-cmd](https://github.com/jason-create-cmd) 维护，持续同步上游更新并分享实战经验。
@@ -199,29 +191,3 @@ docker run -d -p 8080:80 doocs/md:latest
     </tr>
   </tbody>
 </table>
-
-## 反馈与交流
-
-如果你在使用过程中遇到问题，或者有好的建议，欢迎在 [Issues](https://github.com/jason-create-cmd/md/issues) 中反馈。你也可以加入交流群一起讨论，若群二维码失效，请添加好友并备注 md，我们会邀请你进群。同时欢迎关注我的公众号获取最新更新和部署实践。
-
-<table style="margin: 0 auto">
-  <tbody>
-    <tr>
-      <td align="center" style="width: 260px">
-        <img
-          src="https://cdn-doocs.oss-cn-shenzhen.aliyuncs.com/gh/doocs/md/images/doocs-md-wechat-group.jpg"
-          style="width: 200px"
-        /><br />
-        交流群
-      </td>
-      <td align="center" style="width: 260px">
-        <img
-          src="https://pic.operonai.com/qrcode_for_gh_de14ae1b64e2_860.jpg"
-          style="width: 200px"
-        /><br />
-        我的公众号
-      </td>
-    </tr>
-  </tbody>
-</table>
-
