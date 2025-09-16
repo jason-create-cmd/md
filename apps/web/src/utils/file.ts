@@ -396,14 +396,36 @@ async function r2Upload(file: File) {
   )
   const dir = path ? `${path}/` : ``
   const filename = dir + getDateFilename(file.name)
-  const client = new S3Client({ region: `auto`, endpoint: `https://${accountId}.r2.cloudflarestorage.com`, credentials: { accessKeyId: accessKey, secretAccessKey: secretKey } })
+
+  // 配置S3Client for Cloudflare R2 - 根据官方文档
+  const client = new S3Client({
+    region: `auto`, // R2 bucket region 必须是 'auto'
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: accessKey,
+      secretAccessKey: secretKey,
+    },
+  })
+
+  // 生成预签名URL
   const signedUrl = await getSignedUrl(
     client,
-    new PutObjectCommand({ Bucket: bucket, Key: filename, ContentType: file.type }),
-    { expiresIn: 300 },
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: filename,
+      ContentType: file.type,
+    }),
+    { expiresIn: 3600 }, // 增加到1小时
   )
 
-  // 使用原生 fetch 而不是自定义的 axios fetch
+  console.log(`R2 Upload attempt:`, {
+    filename,
+    bucket,
+    contentType: file.type,
+    fileSize: file.size,
+  })
+
+  // 使用原生 fetch 上传到预签名URL
   const response = await window.fetch(signedUrl, {
     method: `PUT`,
     headers: {
@@ -412,11 +434,40 @@ async function r2Upload(file: File) {
     body: file,
   })
 
+  console.log(`R2 Upload response:`, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: Object.fromEntries(response.headers.entries()),
+  })
+
   if (!response.ok) {
-    throw new Error(`R2 upload failed: ${response.status} ${response.statusText}`)
+    const errorText = await response.text().catch(() => `Unknown error`)
+    console.error(`R2 upload failed:`, {
+      status: response.status,
+      statusText: response.statusText,
+      errorText,
+      filename,
+      bucket,
+    })
+
+    // 针对常见错误提供更好的错误信息
+    if (response.status === 403) {
+      throw new Error(`R2 upload failed: 访问被拒绝，请检查CORS配置和访问密钥权限`)
+    }
+    if (response.status === 400) {
+      throw new Error(`R2 upload failed: 请求格式错误，可能是Content-Type不匹配`)
+    }
+    if (response.status === 0) {
+      throw new Error(`R2 upload failed: 网络错误或CORS问题`)
+    }
+
+    throw new Error(`R2 upload failed: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ``}`)
   }
 
-  return `${domain}/${filename}`
+  const finalUrl = `${domain}/${filename}`
+  console.log(`R2 Upload successful:`, finalUrl)
+
+  return finalUrl
 }
 
 // -----------------------------------------------------------------------
