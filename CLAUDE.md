@@ -137,8 +137,39 @@ Common utilities and types used across all packages. Update carefully as changes
 1. **Feature Development**: Work primarily in `apps/web/`
 2. **Core Logic**: Markdown processing changes go in `packages/core/`
 3. **Cross-Package Changes**: Update `packages/shared/` for utilities used by multiple packages
-4. **Testing**: Run `pnpm web build` to verify web app builds correctly
-5. **Type Safety**: Always run `pnpm type-check` before committing
+
+## Image Hosting Configuration
+
+### Cloudflare R2 CORS Setup
+
+If using Cloudflare R2 as image hosting, you **must** configure CORS policy in your R2 bucket to avoid "Failed to fetch" errors during image uploads.
+
+**Required CORS Configuration:**
+
+```json
+[
+  {
+    "AllowedOrigins": [
+      "https://md.operonai.com",
+      "http://localhost:3000"
+    ],
+    "AllowedMethods": ["GET", "PUT", "POST"],
+    "AllowedHeaders": ["Content-Type", "Authorization"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+**Setup Steps:**
+
+1. Log into Cloudflare Dashboard
+2. Go to R2 → Select your bucket
+3. Navigate to Settings → CORS Policy
+4. Add the JSON configuration above
+5. Replace `https://md.operonai.com` with your actual domain
+
+**Note**: Without proper CORS configuration, image uploads will generate URLs but files won't be stored in the bucket, resulting in 404 errors when accessing the images. 4. **Testing**: Run `pnpm web build` to verify web app builds correctly 5. **Type Safety**: Always run `pnpm type-check` before committing
 
 ## Browser Extension Notes
 
