@@ -283,13 +283,19 @@ async function minioFileUpload(file: File) {
     ContentType: file.type,
   })
   const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 })
-  await fetch(presignedUrl, {
+
+  // 使用原生 fetch 而不是自定义的 axios fetch
+  const response = await window.fetch(presignedUrl, {
     method: `PUT`,
     headers: {
       'Content-Type': file.type,
     },
-    data: file,
-  }).catch((err) => { console.log(err) })
+    body: file,
+  })
+
+  if (!response.ok) {
+    throw new Error(`MinIO upload failed: ${response.status} ${response.statusText}`)
+  }
   return `${useSSL ? `https` : `http`}://${endpoint}${port ? `:${port}` : ``}/${bucket}/${dateFilename}`
 }
 
@@ -396,13 +402,20 @@ async function r2Upload(file: File) {
     new PutObjectCommand({ Bucket: bucket, Key: filename, ContentType: file.type }),
     { expiresIn: 300 },
   )
-  await fetch(signedUrl, {
+
+  // 使用原生 fetch 而不是自定义的 axios fetch
+  const response = await window.fetch(signedUrl, {
     method: `PUT`,
     headers: {
       'Content-Type': file.type,
     },
-    data: file,
-  }).catch((err) => { console.log(err) })
+    body: file,
+  })
+
+  if (!response.ok) {
+    throw new Error(`R2 upload failed: ${response.status} ${response.statusText}`)
+  }
+
   return `${domain}/${filename}`
 }
 
