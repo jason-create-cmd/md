@@ -464,7 +464,20 @@ async function r2Upload(file: File) {
     throw new Error(`R2 upload failed: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ``}`)
   }
 
-  const finalUrl = `${domain}/${filename}`
+  // 检查上传是否真的成功 - 验证ETag头的存在
+  const etag = response.headers.get(`ETag`) || response.headers.get(`etag`)
+  if (!etag) {
+    console.warn(`R2 upload warning: No ETag header found, upload may not have completed properly`)
+  }
+  else {
+    console.log(`R2 upload confirmed with ETag: ${etag}`)
+  }
+
+  // 确保domain格式正确 - 应该是完整的URL格式
+  const finalUrl = domain.startsWith(`http`)
+    ? `${domain}/${filename}`
+    : `https://${domain}/${filename}`
+
   console.log(`R2 Upload successful:`, finalUrl)
 
   return finalUrl
