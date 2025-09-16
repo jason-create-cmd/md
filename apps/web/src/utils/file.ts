@@ -397,26 +397,15 @@ async function r2Upload(file: File) {
   const dir = path ? `${path}/` : ``
   const filename = dir + getDateFilename(file.name)
 
-  // 配置S3Client for Cloudflare R2 - 根据官方文档
+  // 配置S3Client for Cloudflare R2
   const client = new S3Client({
-    region: `auto`, // R2 bucket region 必须是 'auto'
+    region: `auto`,
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: {
       accessKeyId: accessKey,
       secretAccessKey: secretKey,
     },
   })
-
-  // 生成预签名URL
-  const signedUrl = await getSignedUrl(
-    client,
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: filename,
-      ContentType: file.type,
-    }),
-    { expiresIn: 3600 }, // 增加到1小时
-  )
 
   console.log(`R2 Upload attempt:`, {
     filename,
@@ -425,62 +414,55 @@ async function r2Upload(file: File) {
     fileSize: file.size,
   })
 
-  // 使用原生 fetch 上传到预签名URL
-  const response = await window.fetch(signedUrl, {
-    method: `PUT`,
-    headers: {
-      'Content-Type': file.type,
-    },
-    body: file,
-  })
-
-  console.log(`R2 Upload response:`, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: Object.fromEntries(response.headers.entries()),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => `Unknown error`)
-    console.error(`R2 upload failed:`, {
-      status: response.status,
-      statusText: response.statusText,
-      errorText,
-      filename,
-      bucket,
+  try {
+    // 直接使用 PutObjectCommand 上传文件
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: filename,
+      Body: file,
+      ContentType: file.type,
     })
 
-    // 针对常见错误提供更好的错误信息
-    if (response.status === 403) {
-      throw new Error(`R2 upload failed: 访问被拒绝，请检查CORS配置和访问密钥权限`)
+    const result = await client.send(command)
+
+    console.log(`R2 Upload response:`, {
+      ETag: result.ETag,
+      VersionId: result.VersionId,
+    })
+
+    // 验证上传成功
+    if (!result.ETag) {
+      throw new Error(`R2 upload failed: 未收到ETag确认`)
     }
-    if (response.status === 400) {
-      throw new Error(`R2 upload failed: 请求格式错误，可能是Content-Type不匹配`)
+
+    console.log(`R2 upload confirmed with ETag: ${result.ETag}`)
+
+    // 生成正确的访问URL
+    const finalUrl = domain.startsWith(`http`)
+      ? `${domain}/${filename}`
+      : `https://${domain}/${filename}`
+
+    console.log(`R2 Upload successful:`, finalUrl)
+    return finalUrl
+  }
+  catch (error) {
+    console.error(`R2 upload failed:`, error)
+
+    if (error instanceof Error) {
+      // 提供更友好的错误信息
+      if (error.message.includes(`403`) || error.message.includes(`Forbidden`)) {
+        throw new Error(`R2 upload failed: 访问被拒绝，请检查访问密钥权限`)
+      }
+      if (error.message.includes(`NoSuchBucket`)) {
+        throw new Error(`R2 upload failed: 存储桶不存在，请检查bucket名称`)
+      }
+      if (error.message.includes(`CORS`)) {
+        throw new Error(`R2 upload failed: CORS配置问题`)
+      }
     }
-    if (response.status === 0) {
-      throw new Error(`R2 upload failed: 网络错误或CORS问题`)
-    }
 
-    throw new Error(`R2 upload failed: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ``}`)
+    throw new Error(`R2 upload failed: ${error}`)
   }
-
-  // 检查上传是否真的成功 - 验证ETag头的存在
-  const etag = response.headers.get(`ETag`) || response.headers.get(`etag`)
-  if (!etag) {
-    console.warn(`R2 upload warning: No ETag header found, upload may not have completed properly`)
-  }
-  else {
-    console.log(`R2 upload confirmed with ETag: ${etag}`)
-  }
-
-  // 确保domain格式正确 - 应该是完整的URL格式
-  const finalUrl = domain.startsWith(`http`)
-    ? `${domain}/${filename}`
-    : `https://${domain}/${filename}`
-
-  console.log(`R2 Upload successful:`, finalUrl)
-
-  return finalUrl
 }
 
 // -----------------------------------------------------------------------

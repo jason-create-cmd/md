@@ -47,7 +47,9 @@ function onUpdate(val: boolean) {
                 style="width: 90%; max-width: 220px; border-radius: 10%;"
               >
             </a>
-            <p class="mt-2 text-sm text-muted-foreground">{{ contributor.name }}</p>
+            <p class="mt-2 text-sm text-muted-foreground">
+              {{ contributor.name }}
+            </p>
           </div>
         </div>
       </div>
