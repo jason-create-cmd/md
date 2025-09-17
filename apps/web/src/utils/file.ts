@@ -401,6 +401,7 @@ async function r2Upload(file: File) {
   const client = new S3Client({
     region: `auto`,
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    forcePathStyle: true,
     credentials: {
       accessKeyId: accessKey,
       secretAccessKey: secretKey,
@@ -415,32 +416,42 @@ async function r2Upload(file: File) {
   })
 
   try {
-    // 直接使用 PutObjectCommand 上传文件
+    // 生成签名URL并通过浏览器直接上传，避免SDK在浏览器环境的流处理问题
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: filename,
-      Body: file,
-      ContentType: file.type,
+      ContentType: file.type || `application/octet-stream`,
     })
 
-    const result = await client.send(command)
+    const signedUrl = await getSignedUrl(client, command, { expiresIn: 3600 })
 
-    console.log(`R2 Upload response:`, {
-      ETag: result.ETag,
-      VersionId: result.VersionId,
+    const uploadResponse = await window.fetch(signedUrl, {
+      method: `PUT`,
+      body: file,
+      headers: {
+        'Content-Type': file.type || `application/octet-stream`,
+      },
     })
 
-    // 验证上传成功
-    if (!result.ETag) {
-      throw new Error(`R2 upload failed: 未收到ETag确认`)
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text().catch(() => ``)
+      throw new Error(
+        `R2 upload failed: 上传接口返回 ${uploadResponse.status} ${uploadResponse.statusText}${errorText ? ` - ${errorText}` : ``}`,
+      )
     }
 
-    console.log(`R2 upload confirmed with ETag: ${result.ETag}`)
+    console.log(`R2 Upload response:`, {
+      status: uploadResponse.status,
+      statusText: uploadResponse.statusText,
+    })
 
     // 生成正确的访问URL
-    const finalUrl = domain.startsWith(`http`)
-      ? `${domain}/${filename}`
-      : `https://${domain}/${filename}`
+    const normalizedDomain = (domain || ``).trim().replace(/\/+$/, ``)
+    const finalUrl = normalizedDomain
+      ? normalizedDomain.startsWith(`http`)
+        ? `${normalizedDomain}/${filename}`
+        : `https://${normalizedDomain}/${filename}`
+      : `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${filename}`
 
     console.log(`R2 Upload successful:`, finalUrl)
     return finalUrl
