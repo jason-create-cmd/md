@@ -390,32 +390,6 @@ async function mpFileUpload(file: File) {
 // Cloudflare R2 File Upload
 // -----------------------------------------------------------------------
 
-function normalizeR2Path(path?: string) {
-  if (!path) {
-    return ``
-  }
-  const trimmed = path.trim().replace(/^\/+/, ``).replace(/\/+$/, ``)
-  return trimmed ? `${trimmed}/` : ``
-}
-
-function normalizeR2Domain(domain?: string) {
-  if (!domain) {
-    return ``
-  }
-  const cleaned = domain.trim().replace(/\/+$/, ``)
-  if (!cleaned) {
-    return ``
-  }
-  return cleaned.startsWith(`http`) ? cleaned : `https://${cleaned}`
-}
-
-function encodeR2ObjectKey(key: string) {
-  return key
-    .split(`/`)
-    .map(part => encodeURIComponent(part))
-    .join(`/`)
-}
-
 /**
  * 生成R2存储桶CORS配置指南
  */
@@ -447,7 +421,7 @@ async function r2Upload(file: File) {
   if (!accountId || !accessKey || !secretKey || !bucket) {
     throw new Error(`R2 upload failed: 配置信息不完整，请检查账号、密钥和存储桶配置`)
   }
-  const dir = normalizeR2Path(path)
+  const dir = path ? `${path}/` : ``
   const filename = dir + getDateFilename(file.name)
 
   console.log(`R2 Upload attempt:`, {
@@ -482,27 +456,26 @@ async function r2Upload(file: File) {
 
     console.log(`R2 Presigned URL generated, attempting upload...`)
 
-    // 使用原生fetch上传，确保包含必要的CORS headers
+    // 使用最简单的fetch配置，避免浏览器兼容性问题
     const uploadResponse = await window.fetch(signedUrl, {
       method: `PUT`,
       body: file,
       headers: {
         'Content-Type': contentType,
       },
-      // 添加CORS模式和凭据选项
-      mode: `cors`,
-      credentials: `omit`,
     })
 
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text().catch(() => ``)
       console.error(`R2 Upload failed with status:`, uploadResponse.status, uploadResponse.statusText)
 
-      // 检查是否是CORS相关错误
-      if (uploadResponse.status === 0 || uploadResponse.status === 403) {
-        throw new Error(
-          `R2 upload failed: CORS配置错误或访问被拒绝。请检查R2存储桶的CORS设置，确保允许来自 ${window.location.origin} 的PUT请求。详细错误: ${uploadResponse.status} ${uploadResponse.statusText}${errorText ? ` - ${errorText}` : ``}`,
-        )
+      // 提供详细的错误信息和CORS指导
+      if (uploadResponse.status === 0) {
+        const corsInstructions = getR2CorsInstructions(window.location.origin)
+        throw new Error(`R2 upload failed: 网络请求被阻止，通常是CORS配置问题。\n\n${corsInstructions}`)
+      }
+      if (uploadResponse.status === 403) {
+        throw new Error(`R2 upload failed: 访问被拒绝，请检查访问密钥权限和CORS配置。详细错误: ${uploadResponse.status} ${uploadResponse.statusText}${errorText ? ` - ${errorText}` : ``}`)
       }
 
       throw new Error(
@@ -516,12 +489,13 @@ async function r2Upload(file: File) {
       headers: Object.fromEntries(uploadResponse.headers.entries()),
     })
 
-    // 生成正确的访问URL
-    const normalizedDomain = normalizeR2Domain(domain)
-    const encodedKey = encodeR2ObjectKey(filename)
+    // 生成正确的访问URL - 使用简单的方式
+    const normalizedDomain = (domain || ``).trim().replace(/\/+$/, ``)
     const finalUrl = normalizedDomain
-      ? `${normalizedDomain}/${encodedKey}`
-      : `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${encodedKey}`
+      ? normalizedDomain.startsWith(`http`)
+        ? `${normalizedDomain}/${filename}`
+        : `https://${normalizedDomain}/${filename}`
+      : `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${filename}`
 
     console.log(`R2 Upload successful:`, finalUrl)
     return finalUrl
@@ -533,20 +507,16 @@ async function r2Upload(file: File) {
       if (error.message.includes(`getReader`)) {
         throw new Error(`R2 upload failed: 当前浏览器环境缺少 ReadableStream 支持，请升级浏览器或关闭兼容模式`)
       }
-      // 更详细的错误分类和提示
+      // 检查常见的网络错误
+      if (error.message.includes(`Failed to fetch`) || error.message.includes(`TypeError`)) {
+        const corsInstructions = getR2CorsInstructions(window.location.origin)
+        throw new Error(`R2 upload failed: 网络请求失败，这通常是CORS配置问题导致的。\n\n${corsInstructions}`)
+      }
       if (error.message.includes(`403`) || error.message.includes(`Forbidden`)) {
-        throw new Error(`R2 upload failed: 访问被拒绝，请检查：1) 访问密钥权限 2) R2存储桶CORS配置 3) 自定义域名设置`)
+        throw new Error(`R2 upload failed: 访问被拒绝，请检查访问密钥权限和CORS配置`)
       }
       if (error.message.includes(`NoSuchBucket`)) {
         throw new Error(`R2 upload failed: 存储桶不存在，请检查bucket名称`)
-      }
-      if (error.message.includes(`CORS`) || error.message.includes(`Failed to fetch`)) {
-        const corsInstructions = getR2CorsInstructions(window.location.origin)
-        throw new Error(`R2 upload failed: CORS配置问题。\n\n${corsInstructions}`)
-      }
-      if (error.message.includes(`NetworkError`) || error.message.includes(`TypeError`)) {
-        const corsInstructions = getR2CorsInstructions(window.location.origin)
-        throw new Error(`R2 upload failed: 网络错误，这通常是CORS配置问题导致的。\n\n${corsInstructions}`)
       }
 
       throw new Error(`R2 upload failed: ${error.message}`)
