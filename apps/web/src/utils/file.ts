@@ -400,20 +400,35 @@ async function r2Upload(file: File) {
   const dir = path ? `${path}/` : ``
   const filename = dir + getDateFilename(file.name)
 
+  const endpoint = `https://${accountId}.r2.cloudflarestorage.com`
+
   console.log(`R2 Upload attempt:`, {
     filename,
     bucket,
     contentType: file.type,
     fileSize: file.size,
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    endpoint,
     accountId,
     domain,
   })
 
+  // 首先测试endpoint连通性
+  console.log(`Testing R2 endpoint connectivity...`)
+  try {
+    const testResponse = await window.fetch(endpoint, {
+      method: 'HEAD',
+      mode: 'no-cors'
+    })
+    console.log(`Endpoint test result:`, testResponse)
+  } catch (testError) {
+    console.error(`Endpoint connectivity test failed:`, testError)
+    // 继续执行，因为no-cors模式可能会失败但实际连接正常
+  }
+
   try {
     // 配置S3Client for Cloudflare R2
     const client = new S3Client({
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      endpoint,
       region: `auto`,
       forcePathStyle: true,
       credentials: {
@@ -429,13 +444,15 @@ async function r2Upload(file: File) {
       ContentType: contentType,
     })
 
+    console.log(`Generating presigned URL...`)
     // 生成签名URL并通过浏览器直接上传，避免SDK在浏览器环境的流处理问题
     const signedUrl = await getSignedUrl(client, command, { expiresIn: 3600 })
 
     console.log(`R2 Presigned URL generated:`, {
-      url: signedUrl,
+      url: signedUrl.substring(0, 100) + '...', // 只显示前100个字符保护隐私
       hostname: new URL(signedUrl).hostname,
       pathname: new URL(signedUrl).pathname,
+      protocol: new URL(signedUrl).protocol,
     })
 
     // 使用最简单的fetch配置，避免浏览器兼容性问题
@@ -467,19 +484,54 @@ async function r2Upload(file: File) {
         })
       } catch (secondError) {
         console.error(`Second fetch attempt also failed:`, secondError)
-        throw new Error(`R2 upload failed: 网络请求被阻止。这可能是由于：
-1. Windows防火墙或杀毒软件阻止了请求
-2. 公司网络策略限制
-3. 浏览器安全策略
-4. R2服务临时不可用
 
-请尝试：
-- 暂时关闭防火墙/杀毒软件
-- 使用其他网络环境
-- 更换浏览器
-- 检查R2服务状态
+        // 尝试第三种方法：使用XMLHttpRequest
+        console.log(`Trying XMLHttpRequest as fallback...`)
+        try {
+          uploadResponse = await new Promise<Response>((resolve, reject) => {
+            const xhr = new XMLHttpRequest()
+            xhr.open('PUT', signedUrl)
+            xhr.setRequestHeader('Content-Type', contentType)
 
-技术错误: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`)
+            xhr.onload = () => {
+              const mockResponse = new Response(xhr.response, {
+                status: xhr.status,
+                statusText: xhr.statusText,
+                headers: new Headers()
+              })
+              resolve(mockResponse)
+            }
+
+            xhr.onerror = () => {
+              reject(new Error(`XMLHttpRequest failed: ${xhr.statusText}`))
+            }
+
+            xhr.send(file)
+          })
+
+          console.log(`XMLHttpRequest succeeded where fetch failed!`)
+        } catch (xhrError) {
+          console.error(`XMLHttpRequest also failed:`, xhrError)
+
+          throw new Error(`R2 upload failed: 所有网络请求方法都失败了。
+
+详细分析：
+1. Fetch API失败: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}
+2. 简化Fetch失败: ${secondError instanceof Error ? secondError.message : String(secondError)}
+3. XMLHttpRequest失败: ${xhrError instanceof Error ? xhrError.message : String(xhrError)}
+
+这通常表明：
+- Windows环境下的网络限制
+- 防火墙/杀毒软件阻止了对 ${new URL(signedUrl).hostname} 的连接
+- DNS解析问题
+- 公司网络策略限制
+
+建议：
+1. 检查Windows防火墙设置
+2. 暂时禁用杀毒软件
+3. 尝试使用移动热点网络
+4. 检查是否有网络代理设置`)
+        }
       }
     }
 
