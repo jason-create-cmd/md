@@ -56,6 +56,19 @@ export const serviceOptions: ServiceOption[] = [
     models: [`gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4-turbo`, `gpt-4o`, `gpt-3.5-turbo`],
   },
   {
+    value: `gemini`,
+    label: `Google Gemini`,
+    endpoint: `https://generativelanguage.googleapis.com/v1`,
+    models: [
+      `gemini-2.5-flash`,
+      `gemini-2.5-pro`,
+      `gemini-1.5-pro`,
+      `gemini-1.5-flash`,
+      `gemini-1.5-flash-8b`,
+      `gemini-1.0-pro`,
+    ],
+  },
+  {
     value: `qwen`,
     label: `通义千问`,
     endpoint: `https://dashscope.aliyuncs.com/compatible-mode/v1`,

@@ -416,11 +416,12 @@ async function r2Upload(file: File) {
   console.log(`Testing R2 endpoint connectivity...`)
   try {
     const testResponse = await window.fetch(endpoint, {
-      method: 'HEAD',
-      mode: 'no-cors'
+      method: `HEAD`,
+      mode: `no-cors`,
     })
     console.log(`Endpoint test result:`, testResponse)
-  } catch (testError) {
+  }
+  catch (testError) {
     console.error(`Endpoint connectivity test failed:`, testError)
     // 继续执行，因为no-cors模式可能会失败但实际连接正常
   }
@@ -449,7 +450,7 @@ async function r2Upload(file: File) {
     const signedUrl = await getSignedUrl(client, command, { expiresIn: 3600 })
 
     console.log(`R2 Presigned URL generated:`, {
-      url: signedUrl.substring(0, 100) + '...', // 只显示前100个字符保护隐私
+      url: `${signedUrl.substring(0, 100)}...`, // 只显示前100个字符保护隐私
       hostname: new URL(signedUrl).hostname,
       pathname: new URL(signedUrl).pathname,
       protocol: new URL(signedUrl).protocol,
@@ -467,11 +468,12 @@ async function r2Upload(file: File) {
           'Content-Type': contentType,
         },
       })
-    } catch (fetchError) {
+    }
+    catch (fetchError) {
       console.error(`Fetch error details:`, {
         error: fetchError,
         message: fetchError instanceof Error ? fetchError.message : String(fetchError),
-        name: fetchError instanceof Error ? fetchError.name : 'Unknown',
+        name: fetchError instanceof Error ? fetchError.name : `Unknown`,
         stack: fetchError instanceof Error ? fetchError.stack : undefined,
       })
 
@@ -482,7 +484,8 @@ async function r2Upload(file: File) {
           method: `PUT`,
           body: file,
         })
-      } catch (secondError) {
+      }
+      catch (secondError) {
         console.error(`Second fetch attempt also failed:`, secondError)
 
         // 尝试第三种方法：使用XMLHttpRequest
@@ -490,14 +493,14 @@ async function r2Upload(file: File) {
         try {
           uploadResponse = await new Promise<Response>((resolve, reject) => {
             const xhr = new XMLHttpRequest()
-            xhr.open('PUT', signedUrl)
-            xhr.setRequestHeader('Content-Type', contentType)
+            xhr.open(`PUT`, signedUrl)
+            xhr.setRequestHeader(`Content-Type`, contentType)
 
             xhr.onload = () => {
               const mockResponse = new Response(xhr.response, {
                 status: xhr.status,
                 statusText: xhr.statusText,
-                headers: new Headers()
+                headers: new Headers(),
               })
               resolve(mockResponse)
             }
@@ -510,7 +513,8 @@ async function r2Upload(file: File) {
           })
 
           console.log(`XMLHttpRequest succeeded where fetch failed!`)
-        } catch (xhrError) {
+        }
+        catch (xhrError) {
           console.error(`XMLHttpRequest also failed:`, xhrError)
 
           throw new Error(`R2 upload failed: 所有网络请求方法都失败了。
