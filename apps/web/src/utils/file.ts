@@ -394,10 +394,20 @@ async function r2Upload(file: File) {
   const { accountId, accessKey, secretKey, bucket, path, domain } = JSON.parse(
     localStorage.getItem(`r2Config`)!,
   )
-  const dir = path ? `${path}/` : ``
-  const filename = dir + getDateFilename(file.name)
 
-  // 配置S3Client for Cloudflare R2
+  const normalizedPrefix = (path || ``)
+    .split(/[/\\]+/)
+    .filter(Boolean)
+    .join(`/`)
+
+  const objectKey = normalizedPrefix
+    ? `${normalizedPrefix}/${getDateFilename(file.name)}`
+    : getDateFilename(file.name)
+
+  let baseDomain = domain.startsWith(`http`) ? domain : `https://${domain}`
+  while (baseDomain.endsWith(`/`))
+    baseDomain = baseDomain.slice(0, -1)
+
   const client = new S3Client({
     region: `auto`,
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
@@ -405,66 +415,48 @@ async function r2Upload(file: File) {
       accessKeyId: accessKey,
       secretAccessKey: secretKey,
     },
-    // workaround for aws-sdk-js-v3#6834: avoid streaming checksum on Blob bodies
-    requestChecksumCalculation: `WHEN_REQUIRED`,
+    requestChecksumCalculation: `ALWAYS`,
+    responseChecksumValidation: `WHEN_REQUIRED`,
   })
 
-  console.log(`R2 Upload attempt:`, {
-    filename,
-    bucket,
-    contentType: file.type,
-    fileSize: file.size,
-  })
+  const body
+    = typeof file.stream === `function`
+      ? file.stream()
+      : new Uint8Array(await file.arrayBuffer())
+
+  const contentType = file.type || `application/octet-stream`
 
   try {
-    // 直接使用 PutObjectCommand 上传文件
-    const command = new PutObjectCommand({
+    const { ETag } = await client.send(new PutObjectCommand({
       Bucket: bucket,
-      Key: filename,
-      Body: file,
-      ContentType: file.type,
-    })
+      Key: objectKey,
+      Body: body,
+      ContentType: contentType,
+      ContentLength: file.size,
+    }))
 
-    const result = await client.send(command)
+    if (!ETag)
+      throw new Error(`R2 upload failed: missing ETag`)
 
-    console.log(`R2 Upload response:`, {
-      ETag: result.ETag,
-      VersionId: result.VersionId,
-    })
-
-    // 验证上传成功
-    if (!result.ETag) {
-      throw new Error(`R2 upload failed: 未收到ETag确认`)
-    }
-
-    console.log(`R2 upload confirmed with ETag: ${result.ETag}`)
-
-    // 生成正确的访问URL
-    const finalUrl = domain.startsWith(`http`)
-      ? `${domain}/${filename}`
-      : `https://${domain}/${filename}`
-
-    console.log(`R2 Upload successful:`, finalUrl)
-    return finalUrl
+    return `${baseDomain}/${objectKey}`
   }
   catch (error) {
-    console.error(`R2 upload failed:`, error)
-
-    if (error instanceof Error) {
-      // 提供更友好的错误信息
-      if (error.message.includes(`403`) || error.message.includes(`Forbidden`)) {
-        throw new Error(`R2 upload failed: 访问被拒绝，请检查访问密钥权限`)
-      }
-      if (error.message.includes(`NoSuchBucket`)) {
-        throw new Error(`R2 upload failed: 存储桶不存在，请检查bucket名称`)
-      }
-      if (error.message.includes(`CORS`)) {
-        throw new Error(`R2 upload failed: CORS配置问题`)
-      }
-    }
-
-    throw new Error(`R2 upload failed: ${error}`)
+    throw refineR2Error(error)
   }
+}
+
+function refineR2Error(error: unknown): Error {
+  if (error instanceof Error) {
+    const message = error.message
+    if (/403|Forbidden/.test(message))
+      return new Error(`R2 upload failed: 访问被拒绝，请检查访问密钥权限`)
+    if (/NoSuchBucket/.test(message))
+      return new Error(`R2 upload failed: 存储桶不存在，请检查 bucket 名称`)
+    if (/CORS/i.test(message))
+      return new Error(`R2 upload failed: CORS 配置问题`)
+    return new Error(`R2 upload failed: ${message}`)
+  }
+  return new Error(`R2 upload failed: ${String(error)}`)
 }
 
 // -----------------------------------------------------------------------
