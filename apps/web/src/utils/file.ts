@@ -405,6 +405,8 @@ async function r2Upload(file: File) {
       accessKeyId: accessKey,
       secretAccessKey: secretKey,
     },
+    // workaround for aws-sdk-js-v3#6834: avoid streaming checksum on Blob bodies
+    requestChecksumCalculation: `WHEN_REQUIRED`,
   })
 
   console.log(`R2 Upload attempt:`, {
