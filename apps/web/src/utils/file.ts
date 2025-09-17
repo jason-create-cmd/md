@@ -390,13 +390,43 @@ async function mpFileUpload(file: File) {
 // Cloudflare R2 File Upload
 // -----------------------------------------------------------------------
 
+function normalizeR2Path(path?: string) {
+  if (!path) {
+    return ``
+  }
+  const trimmed = path.trim().replace(/^\/+/, ``).replace(/\/+$/, ``)
+  return trimmed ? `${trimmed}/` : ``
+}
+
+function normalizeR2Domain(domain?: string) {
+  if (!domain) {
+    return ``
+  }
+  const cleaned = domain.trim().replace(/\/+$/, ``)
+  if (!cleaned) {
+    return ``
+  }
+  return cleaned.startsWith(`http`) ? cleaned : `https://${cleaned}`
+}
+
+function encodeR2ObjectKey(key: string) {
+  return key
+    .split(`/`)
+    .map(part => encodeURIComponent(part))
+    .join(`/`)
+}
+
 async function r2Upload(file: File) {
   const { accountId, accessKey, secretKey, bucket, path, domain } = JSON.parse(
     localStorage.getItem(`r2Config`)!,
   )
-  const dir = path ? `${path}/` : ``
+  if (!accountId || !accessKey || !secretKey || !bucket) {
+    throw new Error(`R2 upload failed: 配置信息不完整，请检查账号、密钥和存储桶配置`)
+  }
+  const dir = normalizeR2Path(path)
   const filename = dir + getDateFilename(file.name)
 
+<<<<<<< ours
   // 配置S3Client for Cloudflare R2
   const client = new S3Client({
     region: `auto`,
@@ -408,6 +438,8 @@ async function r2Upload(file: File) {
     },
   })
 
+=======
+>>>>>>> theirs
   console.log(`R2 Upload attempt:`, {
     filename,
     bucket,
@@ -416,11 +448,29 @@ async function r2Upload(file: File) {
   })
 
   try {
+<<<<<<< ours
     // 生成签名URL并通过浏览器直接上传，避免SDK在浏览器环境的流处理问题
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: filename,
       ContentType: file.type || `application/octet-stream`,
+=======
+    const client = new S3Client({
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      region: `auto`,
+      forcePathStyle: true,
+      credentials: {
+        accessKeyId: accessKey,
+        secretAccessKey: secretKey,
+      },
+    })
+
+    const contentType = file.type || `application/octet-stream`
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: filename,
+      ContentType: contentType,
+>>>>>>> theirs
     })
 
     const signedUrl = await getSignedUrl(client, command, { expiresIn: 3600 })
@@ -429,7 +479,11 @@ async function r2Upload(file: File) {
       method: `PUT`,
       body: file,
       headers: {
+<<<<<<< ours
         'Content-Type': file.type || `application/octet-stream`,
+=======
+        'Content-Type': contentType,
+>>>>>>> theirs
       },
     })
 
@@ -446,12 +500,20 @@ async function r2Upload(file: File) {
     })
 
     // 生成正确的访问URL
+<<<<<<< ours
     const normalizedDomain = (domain || ``).trim().replace(/\/+$/, ``)
     const finalUrl = normalizedDomain
       ? normalizedDomain.startsWith(`http`)
         ? `${normalizedDomain}/${filename}`
         : `https://${normalizedDomain}/${filename}`
       : `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${filename}`
+=======
+    const normalizedDomain = normalizeR2Domain(domain)
+    const encodedKey = encodeR2ObjectKey(filename)
+    const finalUrl = normalizedDomain
+      ? `${normalizedDomain}/${encodedKey}`
+      : `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${encodedKey}`
+>>>>>>> theirs
 
     console.log(`R2 Upload successful:`, finalUrl)
     return finalUrl
@@ -460,6 +522,9 @@ async function r2Upload(file: File) {
     console.error(`R2 upload failed:`, error)
 
     if (error instanceof Error) {
+      if (error.message.includes(`getReader`)) {
+        throw new Error(`R2 upload failed: 当前浏览器环境缺少 ReadableStream 支持，请升级浏览器或关闭兼容模式`)
+      }
       // 提供更友好的错误信息
       if (error.message.includes(`403`) || error.message.includes(`Forbidden`)) {
         throw new Error(`R2 upload failed: 访问被拒绝，请检查访问密钥权限`)
@@ -470,6 +535,11 @@ async function r2Upload(file: File) {
       if (error.message.includes(`CORS`)) {
         throw new Error(`R2 upload failed: CORS配置问题`)
       }
+      if (error.message.includes(`Failed to fetch`)) {
+        throw new Error(`R2 upload failed: 网络请求被浏览器拦截，请检查 CORS 或自定义域名配置`)
+      }
+
+      throw new Error(`R2 upload failed: ${error.message}`)
     }
 
     throw new Error(`R2 upload failed: ${error}`)
