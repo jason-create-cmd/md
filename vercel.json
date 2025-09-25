@@ -7,8 +7,35 @@
   },
   "rewrites": [
     {
-      "source": "/cgi-bin/:path*",
-      "destination": "https://api.weixin.qq.com/cgi-bin/:path*"
+      "source": "/cgi-bin/stable_token",
+      "destination": "https://api.weixin.qq.com/cgi-bin/stable_token"
+    },
+    {
+      "source": "/cgi-bin/material/add_material",
+      "destination": "https://api.weixin.qq.com/cgi-bin/material/add_material"
+    },
+    {
+      "source": "/cgi-bin/media/uploadimg",
+      "destination": "https://api.weixin.qq.com/cgi-bin/media/uploadimg"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/cgi-bin/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        }
+      ]
     }
   ]
 }
