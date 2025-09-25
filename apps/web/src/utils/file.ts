@@ -341,12 +341,14 @@ async function getMpToken(appID: string, appsecret: string, proxyOrigin: string)
 }
 // Cloudflare Pages 环境
 const isCfPage = import.meta.env.CF_PAGES === `1`
+// Vercel 环境
+const isVercel = import.meta.env.VERCEL === `1`
 async function mpFileUpload(file: File) {
   let { appID, appsecret, proxyOrigin } = JSON.parse(
     localStorage.getItem(`mpConfig`)!,
   )
-  // 未填写代理域名且是cfpages环境
-  if (!proxyOrigin && isCfPage) {
+  // 未填写代理域名且是cfpages环境或vercel环境
+  if (!proxyOrigin && (isCfPage || isVercel)) {
     proxyOrigin = window.location.origin
   }
   const access_token = await getMpToken(appID, appsecret, proxyOrigin)

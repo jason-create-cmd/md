@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "WebFetch(domain:md-pages.doocs.org)",
+      "WebSearch",
+      "Bash(pnpm type-check:*)",
+      "Bash(pnpm --filter @md/web type-check:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

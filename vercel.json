@@ -4,5 +4,11 @@
   "outputDirectory": "apps/web/dist",
   "env": {
     "SERVER_ENV": "NETLIFY"
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/cgi-bin/:path*",
+      "destination": "https://api.weixin.qq.com/cgi-bin/:path*"
+    }
+  ]
 }
