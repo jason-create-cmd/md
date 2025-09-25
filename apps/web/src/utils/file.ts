@@ -309,13 +309,17 @@ interface MpResponse {
   errmsg: string
 }
 async function getMpToken(appID: string, appsecret: string, proxyOrigin: string) {
+  console.log(`[WeChat] Getting token for appID: ${appID}, proxy: ${proxyOrigin}`)
+
   const data = localStorage.getItem(`mpToken:${appID}`)
   if (data) {
     const token = JSON.parse(data)
     if (token.expire && token.expire > new Date().getTime()) {
+      console.log(`[WeChat] Using cached token`)
       return token.access_token
     }
   }
+
   const requestOptions = {
     method: `POST`,
     data: {
@@ -324,68 +328,166 @@ async function getMpToken(appID: string, appsecret: string, proxyOrigin: string)
       secret: appsecret,
     },
   }
+
   let url = `https://api.weixin.qq.com/cgi-bin/stable_token`
   if (proxyOrigin) {
     url = `${proxyOrigin}/cgi-bin/stable_token`
+    console.log(`[WeChat] Using proxy URL: ${url}`)
   }
-  const res = await fetch<any, MpResponse>(url, requestOptions)
-  if (res.access_token) {
-    const tokenInfo = {
-      ...res,
-      expire: new Date().getTime() + res.expires_in * 1000,
+
+  try {
+    const res = await fetch<any, MpResponse>(url, requestOptions)
+    console.log(`[WeChat] Token response:`, res)
+
+    if (res.access_token) {
+      const tokenInfo = {
+        ...res,
+        expire: new Date().getTime() + res.expires_in * 1000,
+      }
+      localStorage.setItem(`mpToken:${appID}`, JSON.stringify(tokenInfo))
+      console.log(`[WeChat] Token obtained successfully, expires in ${res.expires_in}s`)
+      return res.access_token
+    } else {
+      console.error(`[WeChat] Failed to get token:`, res)
+      throw new Error(`获取access_token失败: ${res.errmsg || '未知错误'}`)
     }
-    localStorage.setItem(`mpToken:${appID}`, JSON.stringify(tokenInfo))
-    return res.access_token
+  } catch (error) {
+    console.error(`[WeChat] Token request failed:`, error)
+    throw error
   }
-  return ``
 }
 // Cloudflare Pages 环境
 const isCfPage = import.meta.env.CF_PAGES === `1`
 // Vercel 环境
 const isVercel = import.meta.env.VERCEL === `1`
+
+// 配置验证函数
+function validateMpConfig(config: any) {
+  if (!config) {
+    throw new Error(`公众号配置不存在，请先配置公众号信息`)
+  }
+
+  const { appID, appsecret, proxyOrigin } = config
+
+  if (!appID) {
+    throw new Error(`APPID不能为空`)
+  }
+
+  if (!appsecret) {
+    throw new Error(`AppSecret不能为空`)
+  }
+
+  if (appID.length !== 18 || !appID.startsWith(`wx`)) {
+    throw new Error(`APPID格式不正确，应为18位以wx开头的字符串`)
+  }
+
+  if (appsecret.length !== 32) {
+    throw new Error(`AppSecret格式不正确，应为32位字符串`)
+  }
+
+  return { appID, appsecret, proxyOrigin }
+}
+
+// 环境检测函数
+function getEnvironmentInfo() {
+  return {
+    isVercel,
+    isCfPage,
+    isProduction: window.location.hostname !== 'localhost',
+    currentOrigin: window.location.origin,
+    userAgent: navigator.userAgent
+  }
+}
 async function mpFileUpload(file: File) {
-  let { appID, appsecret, proxyOrigin } = JSON.parse(
-    localStorage.getItem(`mpConfig`)!,
-  )
+  console.log(`[WeChat] Starting upload for file: ${file.name}, size: ${file.size} bytes`)
+
+  // 环境信息
+  const envInfo = getEnvironmentInfo()
+  console.log(`[WeChat] Environment:`, envInfo)
+
+  // 验证配置
+  let config
+  try {
+    config = JSON.parse(localStorage.getItem(`mpConfig`)!)
+    const validatedConfig = validateMpConfig(config)
+    console.log(`[WeChat] Config validated:`, validatedConfig)
+    config = validatedConfig
+  } catch (error) {
+    console.error(`[WeChat] Config validation failed:`, error)
+    throw error
+  }
+
+  let { appID, appsecret, proxyOrigin } = config
+
   // 未填写代理域名且是cfpages环境或vercel环境
   if (!proxyOrigin && (isCfPage || isVercel)) {
     proxyOrigin = window.location.origin
-  }
-  const access_token = await getMpToken(appID, appsecret, proxyOrigin)
-  if (!access_token) {
-    throw new Error(`获取 access_token 失败`)
+    console.log(`[WeChat] Auto-detected proxyOrigin: ${proxyOrigin}`)
   }
 
-  const formdata = new FormData()
-  formdata.append(`media`, file, file.name)
+  try {
+    const access_token = await getMpToken(appID, appsecret, proxyOrigin)
+    if (!access_token) {
+      throw new Error(`获取 access_token 失败`)
+    }
+    console.log(`[WeChat] Token obtained successfully`)
 
-  const requestOptions = {
-    method: `POST`,
-    data: formdata,
+    const formdata = new FormData()
+    formdata.append(`media`, file, file.name)
+
+    const requestOptions = {
+      method: `POST`,
+      data: formdata,
+    }
+
+    let url = `https://api.weixin.qq.com/cgi-bin/material/add_material?access_token=${access_token}&type=image`
+    const fileSizeInMB = file.size / (1024 * 1024)
+    const fileType = file.type.toLowerCase()
+
+    if (fileSizeInMB < 1 && (fileType === `image/jpeg` || fileType === `image/png`)) {
+      url = `https://api.weixin.qq.com/cgi-bin/media/uploadimg?access_token=${access_token}`
+      console.log(`[WeChat] Using uploadimg API for small image`)
+    }
+
+    if (proxyOrigin) {
+      url = url.replace(`https://api.weixin.qq.com`, proxyOrigin)
+      console.log(`[WeChat] Final upload URL: ${url}`)
+    }
+
+    console.log(`[WeChat] Sending upload request...`)
+    const res = await fetch<any, { url: string }>(url, requestOptions)
+    console.log(`[WeChat] Upload response:`, res)
+
+    if (!res.url) {
+      console.error(`[WeChat] Upload failed - no URL in response:`, res)
+      throw new Error(`上传失败，未获取到URL。响应: ${JSON.stringify(res)}`)
+    }
+
+    let imageUrl = res.url
+    if (proxyOrigin && window.location.href.startsWith(`http`)) {
+      imageUrl = `https://wsrv.nl?url=${encodeURIComponent(imageUrl)}`
+      console.log(`[WeChat] Using wsrv.nl proxy: ${imageUrl}`)
+    }
+
+    console.log(`[WeChat] Upload successful! Final URL: ${imageUrl}`)
+    return imageUrl
+
+  } catch (error) {
+    console.error(`[WeChat] Upload failed:`, error)
+
+    // 提供更详细的错误信息
+    if (error instanceof Error) {
+      if (error.message.includes(`403`)) {
+        throw new Error(`上传失败 (403): 可能是代理配置问题或公众号权限不足。请检查Vercel重写规则配置。`)
+      } else if (error.message.includes(`400`)) {
+        throw new Error(`上传失败 (400): 请求参数错误，请检查公众号配置。`)
+      } else if (error.message.includes(`获取access_token失败`)) {
+        throw new Error(`认证失败: 请检查APPID和AppSecret是否正确。`)
+      }
+    }
+
+    throw error
   }
-
-  let url = `https://api.weixin.qq.com/cgi-bin/material/add_material?access_token=${access_token}&type=image`
-  const fileSizeInMB = file.size / (1024 * 1024)
-  const fileType = file.type.toLowerCase()
-  if (fileSizeInMB < 1 && (fileType === `image/jpeg` || fileType === `image/png`)) {
-    url = `https://api.weixin.qq.com/cgi-bin/media/uploadimg?access_token=${access_token}`
-  }
-  if (proxyOrigin) {
-    url = url.replace(`https://api.weixin.qq.com`, proxyOrigin)
-  }
-
-  const res = await fetch<any, { url: string }>(url, requestOptions)
-
-  if (!res.url) {
-    throw new Error(`上传失败，未获取到URL`)
-  }
-
-  let imageUrl = res.url
-  if (proxyOrigin && window.location.href.startsWith(`http`)) {
-    imageUrl = `https://wsrv.nl?url=${encodeURIComponent(imageUrl)}`
-  }
-
-  return imageUrl
 }
 
 // -----------------------------------------------------------------------
