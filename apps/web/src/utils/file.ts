@@ -394,253 +394,69 @@ async function r2Upload(file: File) {
   const { accountId, accessKey, secretKey, bucket, path, domain } = JSON.parse(
     localStorage.getItem(`r2Config`)!,
   )
-  if (!accountId || !accessKey || !secretKey || !bucket) {
-    throw new Error(`R2 upload failed: 配置信息不完整，请检查账号、密钥和存储桶配置`)
-  }
-  const dir = path ? `${path}/` : ``
-  const filename = dir + getDateFilename(file.name)
 
-  const endpoint = `https://${accountId}.r2.cloudflarestorage.com`
+  const normalizedPrefix = (path || ``)
+    .split(/[/\\]+/)
+    .filter(Boolean)
+    .join(`/`)
 
-  console.log(`R2 Upload attempt:`, {
-    filename,
-    bucket,
-    contentType: file.type,
-    fileSize: file.size,
-    endpoint,
-    accountId,
-    domain,
+  const objectKey = normalizedPrefix
+    ? `${normalizedPrefix}/${getDateFilename(file.name)}`
+    : getDateFilename(file.name)
+
+  let baseDomain = domain.startsWith(`http`) ? domain : `https://${domain}`
+  while (baseDomain.endsWith(`/`))
+    baseDomain = baseDomain.slice(0, -1)
+
+  const client = new S3Client({
+    region: `auto`,
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: accessKey,
+      secretAccessKey: secretKey,
+    },
+    requestChecksumCalculation: `ALWAYS`,
+    responseChecksumValidation: `WHEN_REQUIRED`,
   })
 
-  // 首先测试endpoint连通性
-  console.log(`Testing R2 endpoint connectivity...`)
-  try {
-    const testResponse = await window.fetch(endpoint, {
-      method: `HEAD`,
-      mode: `no-cors`,
-    })
-    console.log(`Endpoint test result:`, testResponse)
-  }
-  catch (testError) {
-    console.error(`Endpoint connectivity test failed:`, testError)
-    // 继续执行，因为no-cors模式可能会失败但实际连接正常
-  }
+  const body
+    = typeof file.stream === `function`
+      ? file.stream()
+      : new Uint8Array(await file.arrayBuffer())
+
+  const contentType = file.type || `application/octet-stream`
 
   try {
-    // 配置S3Client for Cloudflare R2
-    const client = new S3Client({
-      endpoint,
-      region: `auto`,
-      forcePathStyle: true,
-      credentials: {
-        accessKeyId: accessKey,
-        secretAccessKey: secretKey,
-      },
-    })
-
-    const contentType = file.type || `application/octet-stream`
-    const command = new PutObjectCommand({
+    const { ETag } = await client.send(new PutObjectCommand({
       Bucket: bucket,
-      Key: filename,
+      Key: objectKey,
+      Body: body,
       ContentType: contentType,
-    })
+      ContentLength: file.size,
+    }))
 
-    console.log(`Generating presigned URL...`)
-    // 生成签名URL并通过浏览器直接上传，避免SDK在浏览器环境的流处理问题
-    const signedUrl = await getSignedUrl(client, command, { expiresIn: 3600 })
+    if (!ETag)
+      throw new Error(`R2 upload failed: missing ETag`)
 
-    console.log(`R2 Presigned URL generated:`, {
-      url: `${signedUrl.substring(0, 100)}...`, // 只显示前100个字符保护隐私
-      hostname: new URL(signedUrl).hostname,
-      pathname: new URL(signedUrl).pathname,
-      protocol: new URL(signedUrl).protocol,
-    })
-
-    // 使用最简单的fetch配置，避免浏览器兼容性问题
-    console.log(`Attempting upload with fetch...`)
-
-    let uploadResponse: Response
-    try {
-      uploadResponse = await window.fetch(signedUrl, {
-        method: `PUT`,
-        body: file,
-        headers: {
-          'Content-Type': contentType,
-        },
-      })
-    }
-    catch (fetchError) {
-      console.error(`Fetch error details:`, {
-        error: fetchError,
-        message: fetchError instanceof Error ? fetchError.message : String(fetchError),
-        name: fetchError instanceof Error ? fetchError.name : `Unknown`,
-        stack: fetchError instanceof Error ? fetchError.stack : undefined,
-      })
-
-      // 尝试使用不同的方法
-      console.log(`Fetch failed, trying with different approach...`)
-      try {
-        uploadResponse = await window.fetch(signedUrl, {
-          method: `PUT`,
-          body: file,
-        })
-      }
-      catch (secondError) {
-        console.error(`Second fetch attempt also failed:`, secondError)
-
-        // 尝试第三种方法：使用XMLHttpRequest
-        console.log(`Trying XMLHttpRequest as fallback...`)
-        try {
-          uploadResponse = await new Promise<Response>((resolve, reject) => {
-            const xhr = new XMLHttpRequest()
-            xhr.open(`PUT`, signedUrl)
-            xhr.setRequestHeader(`Content-Type`, contentType)
-
-            xhr.onload = () => {
-              const mockResponse = new Response(xhr.response, {
-                status: xhr.status,
-                statusText: xhr.statusText,
-                headers: new Headers(),
-              })
-              resolve(mockResponse)
-            }
-
-            xhr.onerror = () => {
-              reject(new Error(`XMLHttpRequest failed: ${xhr.statusText}`))
-            }
-
-            xhr.send(file)
-          })
-
-          console.log(`XMLHttpRequest succeeded where fetch failed!`)
-        }
-        catch (xhrError) {
-          console.error(`XMLHttpRequest also failed:`, xhrError)
-
-          throw new Error(`R2 upload failed: 所有网络请求方法都失败了。
-
-详细分析：
-1. Fetch API失败: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}
-2. 简化Fetch失败: ${secondError instanceof Error ? secondError.message : String(secondError)}
-3. XMLHttpRequest失败: ${xhrError instanceof Error ? xhrError.message : String(xhrError)}
-
-这通常表明：
-- Windows环境下的网络限制
-- 防火墙/杀毒软件阻止了对 ${new URL(signedUrl).hostname} 的连接
-- DNS解析问题
-- 公司网络策略限制
-
-建议：
-1. 检查Windows防火墙设置
-2. 暂时禁用杀毒软件
-3. 尝试使用移动热点网络
-4. 检查是否有网络代理设置`)
-        }
-      }
-    }
-
-    console.log(`Upload response received:`, {
-      ok: uploadResponse.ok,
-      status: uploadResponse.status,
-      statusText: uploadResponse.statusText,
-      headers: Object.fromEntries(uploadResponse.headers.entries()),
-    })
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text().catch(() => ``)
-      console.error(`R2 Upload failed with status:`, uploadResponse.status, uploadResponse.statusText, errorText)
-
-      // 提供详细的错误信息和调试指导
-      if (uploadResponse.status === 0) {
-        throw new Error(`R2 upload failed: 网络请求状态为0，这通常表示请求被浏览器或网络环境阻止。
-
-可能原因：
-- CORS配置问题 (但您的配置看起来正确)
-- 网络防火墙阻止
-- 浏览器安全策略
-- DNS解析问题
-
-建议检查：
-1. 确认CORS配置正确
-2. 尝试不同网络环境
-3. 检查浏览器控制台的Network面板`)
-      }
-      if (uploadResponse.status === 403) {
-        throw new Error(`R2 upload failed: 访问被拒绝 (403)。
-
-请检查：
-1. 访问密钥(Access Key)和密钥(Secret Key)是否正确
-2. 密钥是否有对应存储桶的写权限
-3. 存储桶名称是否正确
-4. Account ID是否正确
-
-详细错误: ${uploadResponse.status} ${uploadResponse.statusText}${errorText ? ` - ${errorText}` : ``}`)
-      }
-      if (uploadResponse.status === 404) {
-        throw new Error(`R2 upload failed: 存储桶不存在 (404)。
-
-请检查：
-1. 存储桶名称是否正确
-2. Account ID是否正确
-3. 存储桶是否在正确的账户下
-
-详细错误: ${uploadResponse.status} ${uploadResponse.statusText}${errorText ? ` - ${errorText}` : ``}`)
-      }
-
-      throw new Error(
-        `R2 upload failed: 上传接口返回 ${uploadResponse.status} ${uploadResponse.statusText}${errorText ? ` - ${errorText}` : ``}`,
-      )
-    }
-
-    console.log(`R2 Upload successful!`)
-
-    // 生成正确的访问URL - 使用简单的方式
-    const normalizedDomain = (domain || ``).trim().replace(/\/+$/, ``)
-    const finalUrl = normalizedDomain
-      ? normalizedDomain.startsWith(`http`)
-        ? `${normalizedDomain}/${filename}`
-        : `https://${normalizedDomain}/${filename}`
-      : `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${filename}`
-
-    console.log(`R2 Upload final URL:`, finalUrl)
-    return finalUrl
+    return `${baseDomain}/${objectKey}`
   }
   catch (error) {
-    console.error(`R2 upload failed:`, error)
-
-    if (error instanceof Error) {
-      if (error.message.includes(`getReader`)) {
-        throw new Error(`R2 upload failed: 当前浏览器环境缺少 ReadableStream 支持，请升级浏览器或关闭兼容模式`)
-      }
-      // 检查常见的网络错误
-      if (error.message.includes(`Failed to fetch`) || error.message.includes(`TypeError`)) {
-        throw new Error(`R2 upload failed: 网络请求失败。
-
-这通常是由于以下原因：
-1. CORS配置问题 (但您的配置看起来正确)
-2. Windows防火墙或杀毒软件阻止请求
-3. 网络代理或公司防火墙
-4. 浏览器安全策略
-5. R2服务临时不可用
-
-建议尝试：
-- 在浏览器开发者工具的Network标签页检查具体的网络错误
-- 暂时禁用防火墙/杀毒软件
-- 使用不同的网络环境
-- 尝试不同的浏览器`)
-      }
-      if (error.message.includes(`403`) || error.message.includes(`Forbidden`)) {
-        throw new Error(`R2 upload failed: 访问被拒绝，请检查访问密钥权限和CORS配置`)
-      }
-      if (error.message.includes(`NoSuchBucket`)) {
-        throw new Error(`R2 upload failed: 存储桶不存在，请检查bucket名称`)
-      }
-
-      throw new Error(`R2 upload failed: ${error.message}`)
-    }
-
-    throw new Error(`R2 upload failed: ${String(error)}`)
+    throw refineR2Error(error)
   }
+}
+
+function refineR2Error(error: unknown): Error {
+  if (error instanceof Error) {
+    const message = error.message
+    if (/403|Forbidden/.test(message))
+      return new Error(`R2 upload failed: 访问被拒绝，请检查访问密钥权限`)
+    if (/NoSuchBucket/.test(message))
+      return new Error(`R2 upload failed: 存储桶不存在，请检查 bucket 名称`)
+    if (/CORS/i.test(message))
+      return new Error(`R2 upload failed: CORS 配置问题`)
+    return new Error(`R2 upload failed: ${message}`)
+  }
+  return new Error(`R2 upload failed: ${String(error)}`)
 }
 
 // -----------------------------------------------------------------------
